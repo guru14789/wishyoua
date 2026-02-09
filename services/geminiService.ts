@@ -1,30 +1,18 @@
-
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Gemini Mocked for full frontend flow
+// This prevents the "API Key must be set" error in browser environments
+// and allows testing the full flow without external API dependencies.
 
 export const getStickyAdvice = async (query: string) => {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `You are the wishyoua App AI Assistant. You are friendly, concise, and helpful. You help users understand how wishyoua makes messaging simple, reliable, and private. User asks: ${query}`,
-    });
-    return response.text;
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    return "I'm having trouble connecting right now, but I'm usually much smarter than this! Try again in a second.";
-  }
+  console.log("Mock Gemini Query:", query);
+  // Simulate network delay
+  await new Promise(resolve => setTimeout(resolve, 800));
+
+  return "I'm wishyoua's local AI assistant! Since we're in 'Frontend-Only' mode, I'm giving you this pre-set (but still very friendly) answer. Wishyoua helps guests record beautiful video memories without any technical friction!";
 };
 
 export const getPropertyAdvice = async (query: string) => {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: `You are the VistaHaven Real Estate AI Advisor. You provide expert insights on property investments, luxury residences, and sustainable living. Be professional, informative, and encouraging. User asks: ${query}`,
-    });
-    return response.text;
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    return "I'm sorry, I'm unable to provide real estate advice at the moment. Please try again shortly or contact our agents directly.";
-  }
+  console.log("Mock Gemini Property Query:", query);
+  await new Promise(resolve => setTimeout(resolve, 800));
+
+  return "I can definitely help with your celebration planning! This is a mock response because the app is currently running in full frontend mode.";
 };
