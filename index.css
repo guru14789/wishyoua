@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+
+:root {
+    --token-ea890bb3-12eb-41ee-9e10-72aa6ede7316: #171717;
+    --token-a7b8be9f-b678-4062-91f7-bbd0697cc25f: #ff3b30;
+    --token-043026d4-e1e0-4609-b4f3-be2f8a0f6b3b: #cc0000;
+    --token-021ea3c5-efaa-4167-ba7a-ba038a164284: #ffc300;
+    --token-f40f5549-c417-45bc-a208-9a85f736dd65: #ff6101;
+    --token-1d8317eb-d81b-4223-9193-2f6d36620bfb: #a4e600;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: #000;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+/* Sticky Card Stacking Transition */
+.folder-section {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    min-height: 100vh;
+    background: white;
+    box-shadow: 0 -40px 100px rgba(0, 0, 0, 0.15);
+    border-top-left-radius: 60px;
+    border-top-right-radius: 60px;
+    display: flex;
+    flex-direction: column;
+}
+
+.folder-section.dark {
+    background: #000;
+    color: white;
+    box-shadow: 0 -40px 100px rgba(0, 0, 0, 0.5);
+}
+
+.inner-screen {
+    border-radius: 40px;
+    overflow: hidden;
+    position: relative;
+    background: #111;
+}
+
+.reveal-element {
+    opacity: 0;
+    transform: translateY(15px);
+    transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform, opacity;
+}
+
+.reveal-element.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.scrolly-text {
+    transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    position: absolute;
+    width: 100%;
+    left: 50%;
+    top: 50%;
+    text-align: center;
+}
+
+::-webkit-scrollbar {
+    width: 0px;
+}
+
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bento-card {
+    background-color: #111;
+    border-radius: 32px;
+    overflow: hidden;
+    border: 1px solid #222;
+}
+
+.bg-video {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: cover;
+    z-index: 0;
+}
+
+html,
+body {
+    scroll-behavior: smooth;
+}
+
+@layer utilities {
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "wishyoua - varsh",
+  "description": "The best mobile app showcase for simple, reliable, private messages and calls.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
