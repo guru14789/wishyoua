@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ArrowLeft, Film, CheckCircle, Smartphone, Mail, Settings, Play, Download, Loader2 } from 'lucide-react';
 
@@ -17,6 +17,9 @@ const CompileEvent: React.FC = () => {
     const [notifyEmail, setNotifyEmail] = useState(true);
     const [notifyPhone, setNotifyPhone] = useState(false);
     const [downloading, setDownloading] = useState(false);
+    const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const recorderVideoRef = useRef<HTMLVideoElement>(null);
 
     // Fetch Event & Submissions
     useEffect(() => {
@@ -46,7 +49,8 @@ const CompileEvent: React.FC = () => {
                 if (eventData) {
                     setEventName(eventData.eventName);
                     if (eventData.isCompiled) {
-                        setIsComplete(true);
+                        // In a real app, you'd fetch the already merged URL from Firestore
+                        // For now, we allow re-compiling
                     }
 
                     // 2. Fetch Submissions
@@ -81,70 +85,143 @@ const CompileEvent: React.FC = () => {
             alert("No collected videos to merge! Wait for guests to submit.");
             return;
         }
+
+        const canvas = canvasRef.current;
+        const video = recorderVideoRef.current;
+        if (!canvas || !video) return;
+
         setCompiling(true);
+        setProgress(0);
 
-        // Update LocalStorage to mark as compiled
-        if (!eventId?.startsWith('draft_')) {
-            try {
-                const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
-                const updatedEvents = localEvents.map((e: any) =>
-                    e.id === eventId ? { ...e, isCompiled: true } : e
-                );
-                localStorage.setItem('wishyoua_events', JSON.stringify(updatedEvents));
-            } catch (e) {
-                console.error("Error saving local compile state", e);
-            }
-        }
+        try {
+            // Set canvas size (1080p aspect ratio or similar)
+            canvas.width = 1280;
+            canvas.height = 720;
+            const ctx = canvas.getContext('2d')!;
 
-        // Simulate compilation
-        let p = 0;
-        const interval = setInterval(() => {
-            p += Math.random() * 5;
-            if (p >= 100) {
-                p = 100;
-                clearInterval(interval);
+            // Setup recording stream
+            const stream = canvas.captureStream(30);
+            const audioCtx = new AudioContext();
+            const dest = audioCtx.createMediaStreamDestination();
+
+            // Add audio track to stream
+            stream.addTrack(dest.stream.getAudioTracks()[0]);
+
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+            const chunks: Blob[] = [];
+
+            recorder.ondataavailable = (e) => chunks.push(e.data);
+            recorder.onstop = () => {
+                const finalBlob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(finalBlob);
+                setMergedVideoUrl(url);
                 setIsComplete(true);
                 setCompiling(false);
+            };
+
+            recorder.start();
+
+            // Merge sequence
+            for (let i = 0; i < submissions.length; i++) {
+                setCurrentVideoIndex(i);
+                setProgress((i / submissions.length) * 100);
+
+                await new Promise<void>((resolve, reject) => {
+                    video.src = submissions[i];
+                    video.crossOrigin = "anonymous";
+                    video.muted = false; // We need the audio
+
+                    video.onloadeddata = () => {
+                        video.play();
+
+                        // Connect audio
+                        const source = audioCtx.createMediaElementSource(video);
+                        source.connect(dest);
+                        source.connect(audioCtx.destination); // Also play for monitoring
+
+                        const drawFrame = () => {
+                            if (video.paused || video.ended) {
+                                source.disconnect();
+                                resolve();
+                                return;
+                            }
+
+                            // Fill background
+                            ctx.fillStyle = 'black';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                            // Draw video (maintain aspect ratio)
+                            const vWidth = video.videoWidth;
+                            const vHeight = video.videoHeight;
+                            const ratio = Math.min(canvas.width / vWidth, canvas.height / vHeight);
+                            const newWidth = vWidth * ratio;
+                            const newHeight = vHeight * ratio;
+                            const x = (canvas.width - newWidth) / 2;
+                            const y = (canvas.height - newHeight) / 2;
+
+                            ctx.drawImage(video, x, y, newWidth, newHeight);
+
+                            // Add "wishyoua" watermark
+                            ctx.fillStyle = 'white';
+                            ctx.font = 'bold 24px sans-serif';
+                            ctx.fillText('wishyoua', canvas.width - 140, canvas.height - 30);
+
+                            requestAnimationFrame(drawFrame);
+                        };
+                        drawFrame();
+                    };
+
+                    video.onerror = (e) => reject(e);
+                });
             }
-            setProgress(p);
-        }, 300);
+
+            setProgress(100);
+            recorder.stop();
+            await audioCtx.close();
+
+            // Update state in Firestore if needed
+            if (eventId && !eventId.startsWith('local_') && !eventId.startsWith('draft_')) {
+                await updateDoc(doc(db, "events", eventId), { isCompiled: true });
+            }
+
+        } catch (error) {
+            console.error("Compilation failed:", error);
+            alert("Video merging failed. Please check if your browser supports video recording.");
+            setCompiling(false);
+        }
     };
 
-    const forceDownload = async (url: string, filename: string) => {
+    const handleDownload = async () => {
+        if (!mergedVideoUrl) return;
         setDownloading(true);
         try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            const videoBlobUrl = window.URL.createObjectURL(blob);
-
             const link = document.createElement('a');
-            link.href = videoBlobUrl;
-            link.download = filename;
+            link.href = mergedVideoUrl;
+            link.download = `Wishyoua_Movie_${eventName.replace(/\s+/g, '_')}.webm`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            window.URL.revokeObjectURL(videoBlobUrl);
         } catch (error) {
             console.error("Download failed", error);
-            window.open(url, '_blank');
+            alert("Failed to download the merged video.");
         } finally {
             setDownloading(false);
         }
     };
 
     const handleVideoEnd = () => {
-        // Play next video in sequence
+        // This is for the sequence preview, not used when mergedVideoUrl exists
         if (currentVideoIndex < submissions.length - 1) {
             setCurrentVideoIndex(prev => prev + 1);
-        } else {
-            // Loop back to start or stop? Let's stop.
-            // setCurrentVideoIndex(0); 
         }
     };
 
     return (
         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
-            {/* ... nav ... */}
+            {/* Hidden elements for video processing */}
+            <canvas ref={canvasRef} className="hidden"></canvas>
+            <video ref={recorderVideoRef} className="hidden" playsInline></video>
+
             <nav className="p-4 md:p-6 lg:p-8 flex items-center gap-3 md:gap-4 bg-white border-b border-zinc-100 sticky top-0 z-50">
                 <button onClick={() => navigate(-1)} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200 transition-colors">
                     <ArrowLeft size={16} className="md:size-[18px]" />
@@ -217,7 +294,13 @@ const CompileEvent: React.FC = () => {
                         <p className="text-zinc-500 mb-6 md:mb-8 font-medium text-sm md:text-base">Your compiled video has been generated successfully.</p>
 
                         <div className="aspect-video bg-black rounded-2xl md:rounded-3xl mb-6 md:mb-8 flex items-center justify-center text-white overflow-hidden shadow-2xl relative group">
-                            {submissions.length > 0 ? (
+                            {mergedVideoUrl ? (
+                                <video
+                                    src={mergedVideoUrl}
+                                    controls
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : submissions.length > 0 ? (
                                 <video
                                     key={submissions[currentVideoIndex]}
                                     src={submissions[currentVideoIndex]}
@@ -229,7 +312,7 @@ const CompileEvent: React.FC = () => {
                             ) : (
                                 <p>No videos found.</p>
                             )}
-                            {submissions.length > 1 && (
+                            {!mergedVideoUrl && submissions.length > 1 && (
                                 <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-2 py-1 md:px-3 rounded-full text-[10px] md:text-xs font-bold text-white">
                                     Clip {currentVideoIndex + 1} / {submissions.length}
                                 </div>
@@ -237,19 +320,19 @@ const CompileEvent: React.FC = () => {
                         </div>
 
                         <p className="text-[10px] md:text-xs text-zinc-400 mb-4 md:mb-6 max-w-sm mx-auto">
-                            * Note: For this demo, we are previewing your clips sequentially.
+                            * {mergedVideoUrl ? 'The videos have been stitched into a single file.' : 'Previewing your clips sequentially.'}
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
                             <button
-                                onClick={() => window.open(submissions[0], "_blank")}
+                                onClick={() => window.open(mergedVideoUrl || submissions[0], "_blank")}
                                 className="flex-1 bg-zinc-100 py-3 md:py-4 rounded-xl md:rounded-2xl font-bold hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2 text-sm md:text-base"
                             >
                                 <Play size={18} className="md:size-[20px]" /> Preview All
                             </button>
                             <button
-                                onClick={() => forceDownload(submissions[0], `Wishyoua_Event_${eventId}.mp4`)}
-                                disabled={downloading}
+                                onClick={handleDownload}
+                                disabled={downloading || !mergedVideoUrl}
                                 className="flex-1 bg-black text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-bold shadow-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 disabled:opacity-50 text-sm md:text-base"
                             >
                                 {downloading ? <Loader2 className="animate-spin" /> : <Download size={18} className="md:size-[20px]" />} Download
