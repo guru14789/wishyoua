@@ -16,30 +16,35 @@ const GuestIntro: React.FC = () => {
         const initGuest = async () => {
             if (!eventId) return;
             try {
-                // Mock guest auth
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // 1. Try Firestore first (Real data)
+                if (!eventId.startsWith('local_') && !eventId.startsWith('draft_')) {
+                    const docRef = doc(db, "events", eventId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        setEvent({ id: docSnap.id, ...docSnap.data() });
+                        setLoading(false);
+                        return;
+                    }
+                }
 
+                // 2. Fallback to LocalStorage (Mock data / Previous sessions)
                 if (eventId.startsWith('draft_')) {
                     setEvent({
                         eventName: "Birthday Bash",
                         introType: "text",
                         introMessage: "Hey! Can't wait to see you.",
                     });
-                    setLoading(false);
-                    return;
-                }
-
-                // Read from LocalStorage
-                const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
-                const foundEvent = localEvents.find((e: any) => e.id === eventId);
-
-                if (foundEvent) {
-                    setEvent(foundEvent);
                 } else {
-                    console.warn("Event not found in local storage:", eventId);
+                    const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
+                    const foundEvent = localEvents.find((e: any) => e.id === eventId);
+                    if (foundEvent) {
+                        setEvent(foundEvent);
+                    } else {
+                        console.warn("Event not found in Firestore or LocalStorage:", eventId);
+                    }
                 }
             } catch (e) {
-                console.error("Local guest init error:", e);
+                console.error("Guest layout init error:", e);
             } finally {
                 setLoading(false);
             }
@@ -79,30 +84,32 @@ const GuestIntro: React.FC = () => {
             </button>
 
             {event.introType === 'video' && event.introVideoUrl ? (
-                <div className="absolute inset-0 w-full h-full bg-zinc-900">
+                <div className="absolute inset-0 w-full h-full bg-zinc-900 flex items-center justify-center">
                     <video
                         src={event.introVideoUrl}
                         autoPlay
+                        muted
+                        controls
                         playsInline
                         className="w-full h-full object-cover"
                         onEnded={() => navigate(`/invite/${eventId}/about`)}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none"></div>
-                    <div className="absolute bottom-12 left-0 w-full text-center px-6">
-                        <h1 className="text-3xl text-white font-black mb-2 drop-shadow-lg">{event.eventName}</h1>
+                    <div className="absolute bottom-12 left-0 w-full text-center px-6 pointer-events-none">
+                        <h1 className="text-2xl md:text-4xl text-white font-black mb-2 drop-shadow-lg">{event.eventName}</h1>
                     </div>
                 </div>
             ) : (
-                <div className="max-w-xl p-8 text-center relative z-10">
-                    <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white mx-auto mb-8 animate-bounce duration-[2000ms]">
-                        <MessageCircle size={32} />
+                <div className="max-w-xl p-6 md:p-8 text-center relative z-10 w-full">
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white mx-auto mb-6 md:mb-8 animate-bounce duration-[2000ms]">
+                        <MessageCircle size={28} className="md:size-[32px]" />
                     </div>
-                    <h1 className="text-4xl md:text-6xl font-black text-white mb-8 tracking-tight leading-tight">"{event.introMessage}"</h1>
+                    <h1 className="text-3xl sm:text-4xl md:text-6xl font-black text-white mb-6 md:mb-8 tracking-tight leading-tight px-4">"{event.introMessage}"</h1>
                     <div className="flex flex-col items-center gap-4">
                         <div className="h-1 w-32 bg-zinc-800 rounded-full overflow-hidden">
                             <div className="h-full bg-white transition-all duration-1000 ease-linear" style={{ width: `${((5 - timeLeft) / 5) * 100}%` }}></div>
                         </div>
-                        <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Entering in {timeLeft}s</p>
+                        <p className="text-zinc-500 font-bold text-[10px] md:text-xs uppercase tracking-widest">Entering in {timeLeft}s</p>
                     </div>
                 </div>
             )}

@@ -33,7 +33,7 @@ const Home: React.FC = () => {
     const [isSignupOpen, setIsSignupOpen] = useState(false);
 
     // Auth Global State
-    const { currentUser, login, logout } = useAuth();
+    const { currentUser, logout, signInWithEmail, signUpWithEmail } = useAuth();
     const navigate = useNavigate();
 
     // Signup State
@@ -133,7 +133,7 @@ const Home: React.FC = () => {
         setUserInput('');
     };
 
-    const featureHeadingClass = "text-5xl md:text-8xl font-black text-black tracking-tighter leading-none transition-transform duration-700 hover:scale-105 cursor-default";
+    const featureHeadingClass = "text-4xl sm:text-6xl md:text-8xl font-black text-black tracking-tighter leading-none transition-transform duration-700 hover:scale-105 cursor-default";
 
     const HoverText = ({ text, baseColor = "text-zinc-900" }: { text: string, baseColor?: string }) => (
         <>
@@ -159,8 +159,8 @@ const Home: React.FC = () => {
         navigate('/auth');
     };
 
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
     };
 
     const switchToSignup = () => {
@@ -193,7 +193,7 @@ const Home: React.FC = () => {
         if (!signupData.email.trim()) { errors.email = "Email is required"; }
         else if (!emailRegex.test(signupData.email)) { errors.email = "Invalid format"; }
         if (!signupData.password) { errors.password = "Required"; }
-        else if (signupData.password.length < 8) { errors.password = "Min. 8 chars"; }
+        else if (signupData.password.length < 6) { errors.password = "Min. 6 chars"; }
         if (signupData.confirmPassword !== signupData.password) { errors.confirmPassword = "No match"; }
         return errors;
     };
@@ -209,19 +209,23 @@ const Home: React.FC = () => {
         setIsSubmittingSignup(true);
         setSignupErrors({});
 
-        setTimeout(() => {
-            const existingUsers = JSON.parse(localStorage.getItem('wishyoua_users') || '[]');
-            if (existingUsers.some((u: any) => u.email === signupData.email)) {
-                setSignupErrors({ email: "Email already registered" });
-                setIsSubmittingSignup(false);
-                return;
-            }
-            const newUser = { name: signupData.name, email: signupData.email, password: btoa(signupData.password) };
-            localStorage.setItem('wishyoua_users', JSON.stringify([...existingUsers, newUser]));
+        try {
+            await signUpWithEmail(signupData.email, signupData.password, signupData.name);
             setSignupSuccess(true);
             setIsSubmittingSignup(false);
-            setTimeout(() => switchToLogin(), 2000);
-        }, 1200);
+            setTimeout(() => {
+                // Close signup and maybe open login, or just let them stay on success screen
+                // Actually standard flow is often auto-login. The context handles state change.
+                // We can show success then redirect to create or close modal.
+                navigate('/create');
+            }, 1000);
+        } catch (error: any) {
+            let msg = "Signup failed";
+            if (error.code === 'auth/email-already-in-use') msg = "Email already registered";
+            if (error.code === 'auth/weak-password') msg = "Password too weak";
+            setSignupErrors({ email: msg });
+            setIsSubmittingSignup(false);
+        }
     };
 
     // --- LOGIN LOGIC ---
@@ -231,7 +235,6 @@ const Home: React.FC = () => {
         if (!loginData.email.trim()) errors.email = "Required";
         else if (!emailRegex.test(loginData.email)) errors.email = "Invalid format";
         if (!loginData.password) errors.password = "Required";
-        // else if (loginData.password.length < 8) errors.password = "Invalid length";
         return errors;
     };
 
@@ -247,24 +250,20 @@ const Home: React.FC = () => {
         setIsSubmittingLogin(true);
         setLoginErrors({});
 
-        // Artificial network delay
-        setTimeout(() => {
-            const users = JSON.parse(localStorage.getItem('wishyoua_users') || '[]');
-            const foundUser = users.find((u: any) => u.email === loginData.email);
-
-            // DEVELOPER OVERRIDE: Allow any login
-            const displayName = foundUser ? foundUser.name : loginData.email.split('@')[0];
-
-            // Success
-            const sessionUser = { name: displayName, email: loginData.email, token: 'wa_' + Math.random().toString(36).substr(2) };
-            // localStorage.setItem('wishyoua_session', JSON.stringify(sessionUser));
-            login(sessionUser);
-
+        try {
+            await signInWithEmail(loginData.email, loginData.password);
             setIsSubmittingLogin(false);
             setIsLoginOpen(false);
-            // Navigate to Create Event page
             navigate('/create');
-        }, 1200);
+        } catch (error: any) {
+            let msg = "Invalid email or password";
+            if (error.code === 'auth/user-not-found') msg = "No account found";
+            if (error.code === 'auth/wrong-password') msg = "Incorrect password";
+            if (error.code === 'auth/too-many-requests') msg = "Too many attempts. Try again later.";
+            setLoginErrors({ general: msg });
+            setIsSubmittingLogin(false);
+            setLoginAttempts(prev => prev + 1);
+        }
     };
 
     const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -310,41 +309,43 @@ const Home: React.FC = () => {
                             <div className="absolute inset-0 bg-black/20"></div>
 
                             <nav className="absolute top-0 left-0 right-0 p-8 flex justify-between items-center z-30">
-                                <div className="text-white/80 font-bold hidden md:flex gap-8">
+                                <div className="text-white/80 font-bold hidden lg:flex gap-8">
                                     <button onClick={() => setIsPricingOpen(true)} className="hover:text-white transition-colors duration-300">Pricing</button>
                                     <a href="#faq" className="hover:text-white transition-colors duration-300">FAQs</a>
                                 </div>
                                 <div className="text-3xl font-black text-white tracking-tighter cursor-pointer" onClick={() => window.scrollTo(0, 0)}>wishyoua</div>
 
-                                <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2 sm:gap-4">
                                     {currentUser ? (
-                                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-xl pl-5 pr-2 py-1.5 rounded-full border border-white/10">
+                                        <div className="flex items-center gap-2 sm:gap-4 bg-white/10 backdrop-blur-xl pl-3 sm:pl-5 pr-1.5 sm:pr-2 py-1.5 rounded-full border border-white/10">
                                             <button
                                                 onClick={() => navigate('/create')}
-                                                className="text-white font-black text-xs uppercase tracking-widest hover:opacity-80 transition-opacity text-left"
+                                                className="text-white font-black text-[10px] sm:text-xs uppercase tracking-widest hover:opacity-80 transition-opacity text-left max-w-[80px] sm:max-w-none truncate"
                                                 title="Go to Dashboard"
                                             >
                                                 {currentUser.name}
                                             </button>
-                                            <button onClick={handleLogout} className="p-2.5 bg-white text-black rounded-full hover:scale-110 transition-transform">
-                                                <LogOut size={16} />
+                                            <button onClick={handleLogout} className="p-2 sm:p-2.5 bg-white text-black rounded-full hover:scale-110 transition-transform">
+                                                <LogOut size={14} />
                                             </button>
                                         </div>
                                     ) : (
                                         <button
                                             onClick={openAuth}
-                                            className="bg-white text-black px-6 py-2.5 rounded-full font-bold flex items-center gap-2 hover:scale-105 transition-all duration-300 shadow-xl group/btn"
+                                            className="bg-white text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-bold text-sm sm:text-base flex items-center gap-2 hover:scale-105 transition-all duration-300 shadow-xl group/btn"
                                         >
-                                            Login / Signup <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
+                                            <span className="hidden xs:inline">Login / Signup</span>
+                                            <span className="xs:hidden">Login</span>
+                                            <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
                                         </button>
                                     )}
                                 </div>
                             </nav>
 
                             <div className="absolute inset-0 z-10 w-full flex items-center justify-center pointer-events-none">
-                                <div className="relative w-full max-w-5xl h-64 text-center">
+                                <div className="relative w-full max-w-5xl h-48 md:h-64 text-center">
                                     {narrativeTexts.map((text, idx) => (
-                                        <h1 key={idx} className="scrolly-text text-4xl md:text-8xl font-black text-white leading-tight tracking-tight px-6 drop-shadow-2xl"
+                                        <h1 key={idx} className="scrolly-text text-3xl sm:text-5xl md:text-8xl font-black text-white leading-tight tracking-tight px-6 drop-shadow-2xl"
                                             style={{ opacity: currentTextIndex === idx ? 1 : 0, transform: `translate(-50%, -50%) translateY(${currentTextIndex === idx ? 0 : (currentTextIndex > idx ? -60 : 60)}px)` }}>
                                             {text}
                                         </h1>
@@ -377,17 +378,17 @@ const Home: React.FC = () => {
             {/* LOGIN OVERLAY */}
             {isLoginOpen && (
                 <div className="fixed inset-0 z-[120] bg-white flex flex-col items-center justify-center p-6 animate-in fade-in slide-in-from-bottom-24 duration-700">
-                    <button onClick={() => setIsLoginOpen(false)} className="absolute top-12 left-12 text-zinc-900 font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:gap-5 transition-all group">
+                    <button onClick={() => setIsLoginOpen(false)} className="absolute top-6 left-6 sm:top-12 sm:left-12 text-zinc-900 font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:gap-5 transition-all group">
                         <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Return
                     </button>
 
                     <div className="w-full max-w-[440px] flex flex-col">
-                        <div className="mb-12 text-center">
-                            <div className="inline-flex w-16 h-16 bg-zinc-900 text-white rounded-[24px] items-center justify-center mb-8 shadow-xl">
-                                <Lock size={28} />
+                        <div className="mb-8 sm:mb-12 text-center">
+                            <div className="inline-flex w-14 h-14 sm:w-16 sm:h-16 bg-zinc-900 text-white rounded-[20px] sm:rounded-[24px] items-center justify-center mb-6 sm:mb-8 shadow-xl">
+                                <Lock size={24} className="sm:size-[28px]" />
                             </div>
-                            <h2 className="text-5xl font-black text-zinc-900 tracking-tighter mb-4">Welcome back.</h2>
-                            <p className="text-zinc-500 font-medium">Login to manage your events and videos.</p>
+                            <h2 className="text-4xl sm:text-5xl font-black text-zinc-900 tracking-tighter mb-4">Welcome back.</h2>
+                            <p className="text-zinc-500 font-medium text-sm sm:text-base">Login to manage your events and videos.</p>
                         </div>
 
                         {loginErrors.general && (
@@ -449,17 +450,17 @@ const Home: React.FC = () => {
             {/* SIGNUP OVERLAY */}
             {isSignupOpen && (
                 <div className="fixed inset-0 z-[120] bg-white flex flex-col items-center justify-center p-6 animate-in fade-in slide-in-from-bottom-24 duration-700 overflow-y-auto">
-                    <button onClick={() => setIsSignupOpen(false)} className="absolute top-12 left-12 text-zinc-900 font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:gap-5 transition-all group">
+                    <button onClick={() => setIsSignupOpen(false)} className="absolute top-6 left-6 sm:top-12 sm:left-12 text-zinc-900 font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:gap-5 transition-all group">
                         <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Return
                     </button>
 
                     <div className="w-full max-w-[440px] flex flex-col py-20">
-                        <div className="mb-12 text-center">
-                            <div className={`inline-flex w-16 h-16 ${signupSuccess ? 'bg-green-500' : 'bg-red-600'} text-white rounded-[24px] items-center justify-center mb-8 shadow-xl transition-colors duration-500`}>
-                                {signupSuccess ? <Check size={28} /> : <Zap size={28} />}
+                        <div className="mb-8 sm:mb-12 text-center">
+                            <div className={`inline-flex w-14 h-14 sm:w-16 sm:h-16 ${signupSuccess ? 'bg-green-500' : 'bg-red-600'} text-white rounded-[20px] sm:rounded-[24px] items-center justify-center mb-6 sm:mb-8 shadow-xl transition-colors duration-500`}>
+                                {signupSuccess ? <Check size={24} className="sm:size-[28px]" /> : <Zap size={24} className="sm:size-[28px]" />}
                             </div>
-                            <h2 className="text-5xl font-black text-zinc-900 tracking-tighter mb-4">{signupSuccess ? 'Account Created.' : 'Join wishyoua.'}</h2>
-                            <p className="text-zinc-500 font-medium">{signupSuccess ? 'Redirecting to login...' : 'Start collecting video wishes today.'}</p>
+                            <h2 className="text-4xl sm:text-5xl font-black text-zinc-900 tracking-tighter mb-4">{signupSuccess ? 'Account Created.' : 'Join wishyoua.'}</h2>
+                            <p className="text-zinc-500 font-medium text-sm sm:text-base">{signupSuccess ? 'Redirecting to login...' : 'Start collecting video wishes today.'}</p>
                         </div>
 
                         {!signupSuccess && (
@@ -513,9 +514,9 @@ const Home: React.FC = () => {
             {!isLoginOpen && !isSignupOpen && (
                 <>
                     {/* FEATURES SECTION */}
-                    <section id="features" className="folder-section z-10 pb-[800px]" style={{ zIndex: 10 }}>
-                        <div className="max-w-7xl mx-auto flex flex-col items-center py-40 px-6">
-                            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-10 mb-32 reveal-element">
+                    <section id="features" className="folder-section z-10 pb-[300px] sm:pb-[500px] md:pb-[800px]" style={{ zIndex: 10 }}>
+                        <div className="max-w-7xl mx-auto flex flex-col items-center py-20 sm:py-32 md:py-40 px-6">
+                            <div className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-6 gap-y-6 sm:gap-y-10 mb-16 sm:mb-32 reveal-element">
                                 <h2 className={featureHeadingClass}>Create</h2>
                                 <div className="relative group hover:scale-110 transition-transform duration-500">
                                     <div className={`${FEATURES[0].imageClass} overflow-hidden shadow-2xl`}>
@@ -540,16 +541,16 @@ const Home: React.FC = () => {
 
                     {/* BENTO SECTION */}
                     <section id="bento" className="folder-section dark pb-20" style={{ zIndex: 20 }}>
-                        <div className="py-20 px-8 max-w-7xl mx-auto relative z-10">
-                            <div className="mb-12 text-center reveal-element">
-                                <h2 className="text-5xl md:text-7xl font-black mb-6 text-white tracking-tight text-center">Everything you need.</h2>
+                        <div className="py-16 sm:py-20 px-4 sm:px-8 max-w-7xl mx-auto relative z-10">
+                            <div className="mb-8 sm:mb-12 text-center reveal-element">
+                                <h2 className="text-4xl sm:text-5xl md:text-7xl font-black mb-4 sm:mb-6 text-white tracking-tight text-center">Everything you need.</h2>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {BENTO_ITEMS.map((item, i) => (
-                                    <div key={i} className="bento-card p-0 flex flex-col h-[420px] overflow-hidden group shadow-2xl reveal-element">
-                                        <div className="p-8">
-                                            <h3 className="text-white text-2xl font-black mb-3">{item.title}</h3>
-                                            <p className="text-zinc-400 leading-relaxed font-medium text-sm">{item.description}</p>
+                                    <div key={i} className="bento-card p-0 flex flex-col h-[380px] sm:h-[420px] overflow-hidden group shadow-2xl reveal-element">
+                                        <div className="p-6 sm:p-8">
+                                            <h3 className="text-white text-xl sm:text-2xl font-black mb-2 sm:mb-3">{item.title}</h3>
+                                            <p className="text-zinc-400 leading-relaxed font-medium text-xs sm:text-sm">{item.description}</p>
                                         </div>
                                         <div className="flex-1 px-6 overflow-hidden min-h-[180px]">
                                             <img src={item.image} className="w-full h-full object-cover rounded-t-2xl transition-transform duration-1000 group-hover:scale-105" loading="lazy" alt={item.title} />
@@ -562,16 +563,16 @@ const Home: React.FC = () => {
 
 
                     {/* FAQ SECTION */}
-                    <section id="faq" className="folder-section pb-32" style={{ zIndex: 30 }}>
-                        <div className="py-20 px-8 max-w-4xl mx-auto">
-                            <div className="text-center mb-16 reveal-element">
-                                <h2 className="text-5xl md:text-6xl font-black tracking-tight mb-4 text-zinc-900">Common Questions</h2>
+                    <section id="faq" className="folder-section pb-20 sm:pb-32" style={{ zIndex: 30 }}>
+                        <div className="py-16 sm:py-20 px-4 sm:px-8 max-w-4xl mx-auto">
+                            <div className="text-center mb-10 sm:mb-16 reveal-element">
+                                <h2 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-tight mb-4 text-zinc-900">Common Questions</h2>
                             </div>
                             <div className="space-y-6">
                                 {FAQS.map((faq, i) => (
-                                    <div key={i} className="bg-zinc-50 rounded-[32px] border border-zinc-200 shadow-sm p-8 reveal-element">
-                                        <h3 className="text-xl font-black text-zinc-900 mb-4">{faq.question}</h3>
-                                        <p className="text-zinc-500 text-base font-medium leading-relaxed">{faq.answer}</p>
+                                    <div key={i} className="bg-zinc-50 rounded-[24px] sm:rounded-[32px] border border-zinc-200 shadow-sm p-6 sm:p-8 reveal-element">
+                                        <h3 className="text-lg sm:text-xl font-black text-zinc-900 mb-3 sm:mb-4">{faq.question}</h3>
+                                        <p className="text-zinc-500 text-sm sm:text-base font-medium leading-relaxed">{faq.answer}</p>
                                     </div>
                                 ))}
                             </div>
@@ -580,14 +581,14 @@ const Home: React.FC = () => {
 
                     {/* DOWNLOAD SECTION */}
                     <section id="download" className="folder-section dark bg-black flex flex-col items-center justify-center min-h-screen" style={{ zIndex: 40 }}>
-                        <div className="max-w-7xl mx-auto px-8 w-full py-32">
-                            <div className="flex flex-col items-center mb-32 reveal-element">
-                                <div className="flex items-center gap-6 mb-12 flex-wrap justify-center">
-                                    <h2 className="text-6xl md:text-9xl font-black tracking-tighter"><HoverText text="Start" baseColor="text-white" /></h2>
-                                    <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center p-4 shadow-2xl hover:scale-125 transition-all cursor-pointer" onClick={openAuth}>
-                                        <Plus size={40} className="text-black" />
+                        <div className="max-w-7xl mx-auto px-6 sm:px-8 w-full py-20 sm:py-32">
+                            <div className="flex flex-col items-center mb-20 sm:mb-32 reveal-element">
+                                <div className="flex items-center gap-4 sm:gap-6 mb-8 sm:mb-12 flex-wrap justify-center">
+                                    <h2 className="text-4xl sm:text-6xl md:text-9xl font-black tracking-tighter"><HoverText text="Start" baseColor="text-white" /></h2>
+                                    <div className="w-14 h-14 sm:w-20 sm:h-20 bg-white rounded-2xl sm:rounded-3xl flex items-center justify-center p-3 sm:p-4 shadow-2xl hover:scale-125 transition-all cursor-pointer" onClick={openAuth}>
+                                        <Plus size={30} className="text-black sm:size-[40px]" />
                                     </div>
-                                    <h2 className="text-6xl md:text-9xl font-black tracking-tighter"><HoverText text="wishyoua" baseColor="text-white" /></h2>
+                                    <h2 className="text-4xl sm:text-6xl md:text-9xl font-black tracking-tighter"><HoverText text="wishyoua" baseColor="text-white" /></h2>
                                 </div>
                             </div>
                             <div className="w-full pt-12 border-t border-zinc-800 flex flex-col md:flex-row justify-between items-center gap-8 text-white font-bold uppercase tracking-widest text-[10px]">
@@ -602,40 +603,40 @@ const Home: React.FC = () => {
             {isPricingOpen && (
                 <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-start overflow-y-auto animate-in fade-in slide-in-from-bottom-24 duration-700">
                     <div className="sticky top-0 w-full p-12 flex justify-between items-center z-50 bg-gradient-to-b from-white to-transparent">
-                        <button onClick={() => setIsPricingOpen(false)} className="text-zinc-900 font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:gap-5 transition-all group">
-                            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Return
+                        <button onClick={() => setIsPricingOpen(false)} className="text-zinc-900 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 sm:gap-3 hover:gap-5 transition-all group">
+                            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> <span className="hidden sm:inline">Return</span>
                         </button>
                         <div className="text-zinc-900 font-black tracking-tighter text-xl cursor-pointer" onClick={() => setIsPricingOpen(false)}>wishyoua</div>
                         <div className="w-16"></div>
                     </div>
 
-                    <div className="max-w-7xl w-full px-8 pb-32 pt-10 flex flex-col items-center">
-                        <div className="text-center mb-24 max-w-4xl">
-                            <h2 className="text-4xl md:text-7xl font-black text-zinc-900 tracking-tighter mb-8 leading-[0.9]">Simple, transparent <br /> <span className="text-black">pricing</span></h2>
-                            <p className="text-zinc-500 text-xl font-medium max-w-xl mx-auto">Free for casual events. Affordable power for life's biggest celebrations.</p>
+                    <div className="max-w-7xl w-full px-4 sm:px-8 pb-20 sm:pb-32 pt-6 sm:pt-10 flex flex-col items-center">
+                        <div className="text-center mb-10 sm:mb-16 md:mb-24 max-w-4xl px-4">
+                            <h2 className="text-4xl sm:text-5xl md:text-7xl font-black text-zinc-900 tracking-tighter mb-4 sm:mb-8 leading-[0.9]">Simple, transparent <br /> <span className="text-black">pricing</span></h2>
+                            <p className="text-zinc-500 text-sm sm:text-lg md:text-xl font-medium max-w-xl mx-auto">Free for casual events. Affordable power for life's biggest celebrations.</p>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full items-stretch">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 w-full items-stretch">
                             {PRICING_PLANS.map((plan, i) => (
-                                <div key={i} className={`relative p-12 rounded-[56px] transition-all duration-700 group flex flex-col bg-white text-zinc-950 shadow-xl border-4 ${plan.highlight ? 'border-red-600 scale-105 z-10' : 'border-zinc-100'}`}>
-                                    <h3 className="text-4xl font-black mb-4 tracking-tight text-zinc-900">{plan.name}</h3>
-                                    <div className="mb-14 flex items-baseline gap-2">
-                                        <span className="text-7xl font-black tracking-tighter text-zinc-900">${plan.price}</span>
-                                        <span className="font-bold text-zinc-400">/mo</span>
+                                <div key={i} className={`relative p-6 sm:p-10 md:p-12 rounded-[32px] sm:rounded-[48px] md:rounded-[56px] transition-all duration-700 group flex flex-col bg-white text-zinc-950 shadow-xl border-4 ${plan.highlight ? 'border-red-600 md:scale-105 z-10' : 'border-zinc-100'}`}>
+                                    <h3 className="text-2xl sm:text-3xl md:text-4xl font-black mb-2 sm:mb-4 tracking-tight text-zinc-900">{plan.name}</h3>
+                                    <div className="mb-8 sm:mb-10 md:mb-14 flex items-baseline gap-1 sm:gap-2">
+                                        <span className="text-5xl sm:text-6xl md:text-7xl font-black tracking-tighter text-zinc-900">${plan.price}</span>
+                                        <span className="font-bold text-zinc-400 text-sm sm:text-base">/mo</span>
                                     </div>
-                                    <div className="space-y-6 mb-16 flex-grow">
+                                    <div className="space-y-4 sm:space-y-6 mb-8 sm:mb-12 md:mb-16 flex-grow">
                                         {plan.features.map((feat, j) => (
-                                            <div key={j} className="flex items-center gap-4">
-                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${plan.highlight ? 'bg-red-600 text-white' : 'bg-zinc-100 text-zinc-500'}`}><Check size={12} strokeWidth={4} /></div>
-                                                <span className="font-bold text-[13px] tracking-tight text-zinc-800">{feat}</span>
+                                            <div key={j} className="flex items-center gap-3 sm:gap-4">
+                                                <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 ${plan.highlight ? 'bg-red-600 text-white' : 'bg-zinc-100 text-zinc-500'}`}><Check size={10} className="sm:size-[12px]" strokeWidth={4} /></div>
+                                                <span className="font-bold text-xs sm:text-[13px] tracking-tight text-zinc-800">{feat}</span>
                                             </div>
                                         ))}
                                     </div>
                                     <button onClick={() => {
                                         const planTier = plan.name === 'Starter' ? 'free' : plan.name === 'Celebration' ? 'pro' : 'premium';
                                         navigate('/auth', { state: { selectedPlan: planTier } });
-                                    }} className={`w-full py-6 rounded-3xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-3 ${plan.highlight ? 'bg-red-600 text-white' : 'bg-zinc-900 text-white'}`}>
-                                        {plan.buttonText} <ArrowRight size={20} />
+                                    }} className={`w-full py-4 sm:py-6 rounded-2xl sm:rounded-3xl font-black text-base sm:text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 sm:gap-3 ${plan.highlight ? 'bg-red-600 text-white' : 'bg-zinc-900 text-white'}`}>
+                                        {plan.buttonText} <ArrowRight size={18} className="sm:size-[20px]" />
                                     </button>
                                 </div>
                             ))}
@@ -648,12 +649,12 @@ const Home: React.FC = () => {
             {isChatOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-500">
                     <div className="bg-white rounded-[44px] w-full max-w-[420px] p-10 shadow-2xl relative animate-in slide-in-from-bottom-12 duration-700">
-                        <div className="flex items-center justify-between mb-8">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-red-600 rounded-[18px] flex items-center justify-center text-white"><Sparkles size={24} /></div>
-                                <div><h4 className="font-black text-xl text-zinc-900">wishyoua AI</h4></div>
+                        <div className="flex items-center justify-between mb-6 sm:mb-8">
+                            <div className="flex items-center gap-3 sm:gap-4">
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-600 rounded-[14px] sm:rounded-[18px] flex items-center justify-center text-white"><Sparkles size={20} className="sm:size-[24px]" /></div>
+                                <div><h4 className="font-black text-lg sm:text-xl text-zinc-900">wishyoua AI</h4></div>
                             </div>
-                            <button onClick={() => setIsChatOpen(false)} className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400"><X size={20} /></button>
+                            <button onClick={() => setIsChatOpen(false)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400"><X size={18} className="sm:size-[20px]" /></button>
                         </div>
                         <div className="max-h-[300px] overflow-y-auto mb-8 space-y-5 pr-2 custom-scrollbar">
                             <div className="bg-zinc-100 p-5 rounded-[28px] text-zinc-800 font-medium">Welcome! Ask me anything about wishyoua.</div>

@@ -126,21 +126,21 @@ const GuestRecord: React.FC = () => {
                     {/* Overlay: Countdown */}
                     {recordingState === 'countdown' && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-50 animate-in fade-in">
-                            <div className="text-[150px] font-black text-white drop-shadow-2xl animate-bounce">
+                            <div className="text-8xl md:text-[150px] font-black text-white drop-shadow-2xl animate-bounce">
                                 {countdown > 0 ? countdown : 'GO!'}
                             </div>
                         </div>
                     )}
 
                     {/* Overlay: Prompts & Timer */}
-                    <div className="absolute top-0 left-0 w-full p-8 bg-gradient-to-b from-black/80 to-transparent z-40 flex flex-col items-center transition-opacity duration-300">
+                    <div className="absolute top-0 left-0 w-full p-6 md:p-8 bg-gradient-to-b from-black/80 to-transparent z-40 flex flex-col items-center transition-opacity duration-300">
                         {recordingState === 'recording' && (
-                            <div className="bg-red-600/90 text-white px-4 py-1 rounded-full font-mono font-bold text-sm mb-4 animate-pulse">
+                            <div className="bg-red-600/90 text-white px-3 py-1 md:px-4 rounded-full font-mono font-bold text-xs md:text-sm mb-3 md:mb-4 animate-pulse">
                                 REC {formatTime(timer)} / 2:00
                             </div>
                         )}
 
-                        <h2 className="text-2xl md:text-3xl font-black text-white text-center leading-tight drop-shadow-lg transition-all duration-700 ease-in-out">
+                        <h2 className="text-xl md:text-3xl font-black text-white text-center leading-tight drop-shadow-lg transition-all duration-700 ease-in-out px-4">
                             {recordingState === 'idle'
                                 ? "Get Ready..."
                                 : (timer < PHASE_SWITCH_TIME ? questionPhase1 : questionPhase2)

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-// Firebase imports removed for full frontend flow
+import { doc, getDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { Plus, Copy, Share2, Video, Calendar, MapPin, Users, ChartBar, Play, Download, ArrowLeft, Trash2, Loader2, Heart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,7 +17,7 @@ interface Submission {
 const Dashboard: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
-    const { currentUser } = useAuth();
+    const { currentUser, loading: authLoading } = useAuth();
 
     const [submissions, setSubmissions] = useState<Submission[]>([]);
     const [eventName, setEventName] = useState('');
@@ -27,53 +28,116 @@ const Dashboard: React.FC = () => {
     // Mock Plan - In real app, fetch from User Context
     const userPlan = 'free'; // Change to 'pro' to unlock downloads
 
-    // Fetch Event Details and Submissions (Mocked)
+    // Fetch Event Details and Submissions
     useEffect(() => {
-        if (!eventId) return;
+        if (authLoading) return;
+
+        if (!currentUser) {
+            setLoading(false);
+            // Optional: navigate('/auth') but better to show a "Please login" state in UI
+            return;
+        }
+
+        if (!eventId) {
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
+        let unsubscribeSubmissions: () => void;
 
         const fetchData = async () => {
             try {
-                // 1. Fetch Event Info from LocalStorage
-                const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
-                const foundEvent = localEvents.find((e: any) => e.id === eventId);
-
-                if (foundEvent) {
-                    setEventName(foundEvent.eventName);
-                    if (foundEvent.isCompiled === true) {
-                        setIsCompiled(true);
+                // 1. Fetch Event Info
+                if (eventId.startsWith('local_')) {
+                    const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
+                    const foundEvent = localEvents.find((e: any) => e.id === eventId);
+                    if (foundEvent) {
+                        setEventName(foundEvent.eventName);
+                        setIsCompiled(foundEvent.isCompiled === true);
+                    } else {
+                        setEventName("Untitled Event");
                     }
                 } else if (!eventId.startsWith('draft_')) {
-                    setEventName("Local Event");
+                    const docRef = doc(db, "events", eventId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        setEventName(docSnap.data().eventName);
+                        setIsCompiled(docSnap.data().isCompiled === true);
+                    } else {
+                        setEventName("Event Not Found");
+                    }
+                } else {
+                    setEventName("Birthday Bash");
                 }
 
-                // 2. Fetch Submissions from LocalStorage
+                // 2. Fetch Submissions
                 if (eventId.startsWith('draft_')) {
                     setSubmissions([
                         { id: '1', guestName: 'Alice Johnson', relationship: 'Best Friend', videoUrl: 'https://framerusercontent.com/assets/f7C7xL8Nl8X9u0k9X4.mp4', createdAt: { toDate: () => new Date() }, status: 'completed' },
                         { id: '2', guestName: 'Bob Smith', relationship: 'Cousin', videoUrl: '', createdAt: { toDate: () => new Date() }, status: 'pending' },
                     ]);
+                    setLoading(false);
                 } else {
-                    const allSubmissions = JSON.parse(localStorage.getItem('wishyoua_submissions') || '[]');
-                    const filtered = allSubmissions
-                        .filter((s: any) => s.eventId === eventId)
-                        .map((s: any) => ({
-                            ...s,
-                            createdAt: { toDate: () => new Date(s.createdAt) }
-                        }));
-                    setSubmissions(filtered);
+                    const q = query(collection(db, "submissions"), where("eventId", "==", eventId));
+                    unsubscribeSubmissions = onSnapshot(q, (snapshot) => {
+                        const subs: Submission[] = [];
+                        snapshot.forEach((doc) => {
+                            const data = doc.data();
+                            subs.push({
+                                id: doc.id,
+                                guestName: data.guestName,
+                                relationship: data.relationship,
+                                videoUrl: data.videoUrl,
+                                status: data.status,
+                                createdAt: { toDate: () => new Date(data.createdAt) }
+                            } as Submission);
+                        });
+
+                        // Merge with local storage for legacy data
+                        const allLocalSubmissions = JSON.parse(localStorage.getItem('wishyoua_submissions') || '[]');
+                        const localFiltered = allLocalSubmissions
+                            .filter((s: any) => s.eventId === eventId && s.id.startsWith('temp_'))
+                            .map((s: any) => ({
+                                ...s,
+                                createdAt: { toDate: () => new Date(s.createdAt) }
+                            }));
+
+                        const merged = [...subs];
+                        localFiltered.forEach((ls: any) => {
+                            if (!merged.find(m => m.videoUrl === ls.videoUrl)) {
+                                merged.push(ls);
+                            }
+                        });
+
+                        setSubmissions(merged.sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()));
+                        setLoading(false);
+                    }, (error) => {
+                        console.error("Submissions listener error:", error);
+                        // Fallback to purely local if Firestore fails
+                        const allLocalSubmissions = JSON.parse(localStorage.getItem('wishyoua_submissions') || '[]');
+                        const localFiltered = allLocalSubmissions
+                            .filter((s: any) => s.eventId === eventId)
+                            .map((s: any) => ({
+                                ...s,
+                                createdAt: { toDate: () => new Date(s.createdAt) }
+                            }));
+                        setSubmissions(localFiltered);
+                        setLoading(false);
+                    });
                 }
             } catch (e) {
-                console.error("Error fetching local data:", e);
-            } finally {
+                console.error("Dashboard fetch error:", e);
                 setLoading(false);
             }
         };
 
         fetchData();
 
-        // Mock real-time: In a more complex mock, we'd add a storage event listener
-    }, [eventId]);
+        return () => {
+            if (unsubscribeSubmissions) unsubscribeSubmissions();
+        };
+    }, [eventId, currentUser, authLoading]);
 
     const handleDelete = async (submissionId: string) => {
         if (!confirm("Are you sure you want to delete this memory? This cannot be undone.")) return;
@@ -115,14 +179,14 @@ const Dashboard: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-zinc-50 flex flex-col font-sans text-zinc-900">
-            <nav className="p-6 md:p-8 flex justify-between items-center bg-white border-b border-zinc-100 sticky top-0 z-50">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => navigate('/create')} className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200 transition-colors">
-                        <ArrowLeft size={18} />
+            <nav className="p-4 md:p-6 lg:p-8 flex justify-between items-center bg-white border-b border-zinc-100 sticky top-0 z-50">
+                <div className="flex items-center gap-3 md:gap-4">
+                    <button onClick={() => navigate('/create')} className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200 transition-colors">
+                        <ArrowLeft size={16} className="md:size-[18px]" />
                     </button>
                     <div className="flex flex-col">
-                        <div className="text-xl font-black tracking-tighter cursor-pointer" onClick={() => navigate('/')}>wishyoua</div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Owner Dashboard</div>
+                        <div className="text-lg md:text-xl font-black tracking-tighter cursor-pointer" onClick={() => navigate('/')}>wishyoua</div>
+                        <div className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-zinc-400">Owner Dashboard</div>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -133,12 +197,12 @@ const Dashboard: React.FC = () => {
                 </div>
             </nav>
 
-            <main className="flex-grow p-6 md:p-12 max-w-7xl mx-auto w-full">
+            <main className="flex-grow p-4 md:p-8 lg:p-12 max-w-7xl mx-auto w-full">
 
-                <div className="mb-10 flex flex-col md:flex-row justify-between items-end gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="mb-8 md:mb-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div>
-                        <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-4">Event Submissions</h1>
-                        <p className="text-zinc-500 text-lg font-medium">Manage the videos collected from your guests.</p>
+                        <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-2 md:mb-4">Event Submissions</h1>
+                        <p className="text-zinc-500 text-base md:text-lg font-medium">Manage the videos collected from your guests.</p>
                     </div>
                     <div className="bg-white px-6 py-3 rounded-2xl shadow-sm border border-zinc-100">
                         <span className="text-sm font-bold text-zinc-400 uppercase tracking-wider mr-2">Total Memories</span>

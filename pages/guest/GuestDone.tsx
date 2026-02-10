@@ -31,12 +31,12 @@ const GuestDone: React.FC = () => {
                 <Confetti active={confetti} config={config} />
             </div>
 
-            <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center text-white mb-8 shadow-2xl shadow-green-500/30 animate-in zoom-in duration-500">
-                <Check size={48} strokeWidth={4} />
+            <div className="w-20 h-20 md:w-24 md:h-24 bg-green-500 rounded-full flex items-center justify-center text-white mb-6 md:mb-8 shadow-2xl shadow-green-500/30 animate-in zoom-in duration-500">
+                <Check size={40} className="md:size-[48px]" strokeWidth={4} />
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-black mb-6 animate-in slide-in-from-bottom-8 duration-700">Thank You!</h1>
-            <p className="text-zinc-400 text-lg font-medium max-w-md mb-12 animate-in slide-in-from-bottom-8 duration-700 delay-100">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-black mb-4 md:mb-6 animate-in slide-in-from-bottom-8 duration-700">Thank You!</h1>
+            <p className="text-zinc-400 text-base md:text-lg font-medium max-w-md mb-8 md:mb-12 animate-in slide-in-from-bottom-8 duration-700 delay-100">
                 Your memory has been securely encrypted and added to the vault. The organizer will be notified.
             </p>
 

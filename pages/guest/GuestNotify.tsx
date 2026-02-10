@@ -16,7 +16,13 @@ const GuestNotify: React.FC = () => {
         setLoading(true);
 
         try {
-            if (eventId && !eventId.startsWith('draft_')) {
+            // Check if it's a local event (mock mode) or draft
+            if (eventId && (eventId.startsWith('local_') || eventId.startsWith('draft_'))) {
+                console.log("Mock notify saved for local event:", { email, phone });
+                // Simulate network delay
+                await new Promise(resolve => setTimeout(resolve, 500));
+            } else if (eventId) {
+                // Real Firestore update for synced events
                 const eventRef = doc(db, "events", eventId);
                 await updateDoc(eventRef, {
                     interestedGuests: arrayUnion({ email, phone, date: new Date().toISOString() })
@@ -32,14 +38,14 @@ const GuestNotify: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6 font-sans">
-            <div className="w-full max-w-md bg-white p-8 md:p-12 rounded-[40px] shadow-2xl animate-in slide-in-from-bottom-8 duration-700">
-                <div className="text-center mb-10">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Bell size={32} />
+        <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4 md:p-6 font-sans">
+            <div className="w-full max-w-md bg-white p-6 md:p-12 rounded-[32px] md:rounded-[40px] shadow-2xl animate-in slide-in-from-bottom-8 duration-700">
+                <div className="text-center mb-8 md:mb-10">
+                    <div className="w-14 h-14 md:w-16 md:h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 md:mb-6">
+                        <Bell size={24} className="md:size-[32px]" />
                     </div>
-                    <h2 className="text-3xl font-black text-zinc-900 mb-2">Want to see the final video?</h2>
-                    <p className="text-zinc-500 font-medium">We'll notify you when the organizer merges all the clips into a movie.</p>
+                    <h2 className="text-2xl md:text-3xl font-black text-zinc-900 mb-2">Want to see the final video?</h2>
+                    <p className="text-zinc-500 font-medium text-sm md:text-base">We'll notify you when the organizer merges all the clips into a movie.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">

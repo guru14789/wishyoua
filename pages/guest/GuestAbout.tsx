@@ -17,11 +17,11 @@ const GuestAbout: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6 font-sans">
-            <div className="w-full max-w-md bg-white p-8 md:p-12 rounded-[40px] shadow-2xl animate-in slide-in-from-bottom-8 duration-700">
-                <div className="text-center mb-10">
-                    <h2 className="text-3xl font-black text-zinc-900 mb-2">First, a little about you.</h2>
-                    <p className="text-zinc-500 font-medium">So we know who this memory is from.</p>
+        <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4 md:p-6 font-sans">
+            <div className="w-full max-w-md bg-white p-6 md:p-12 rounded-[32px] md:rounded-[40px] shadow-2xl animate-in slide-in-from-bottom-8 duration-700">
+                <div className="text-center mb-8 md:mb-10">
+                    <h2 className="text-2xl md:text-3xl font-black text-zinc-900 mb-2">First, a little about you.</h2>
+                    <p className="text-zinc-500 font-medium text-sm md:text-base">So we know who this memory is from.</p>
                 </div>
 
                 <form onSubmit={handleNext} className="space-y-6">
