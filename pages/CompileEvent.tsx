@@ -101,11 +101,18 @@ const CompileEvent: React.FC = () => {
 
             // Setup recording stream
             const stream = canvas.captureStream(30);
-            const audioCtx = new AudioContext();
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
             const dest = audioCtx.createMediaStreamDestination();
 
+            // Create source node once and keep it connected
+            const source = audioCtx.createMediaElementSource(video);
+            source.connect(dest);
+            source.connect(audioCtx.destination);
+
             // Add audio track to stream
-            stream.addTrack(dest.stream.getAudioTracks()[0]);
+            if (dest.stream.getAudioTracks().length > 0) {
+                stream.addTrack(dest.stream.getAudioTracks()[0]);
+            }
 
             const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
             const chunks: Blob[] = [];
@@ -129,19 +136,13 @@ const CompileEvent: React.FC = () => {
                 await new Promise<void>((resolve, reject) => {
                     video.src = submissions[i];
                     video.crossOrigin = "anonymous";
-                    video.muted = false; // We need the audio
+                    video.muted = false;
 
                     video.onloadeddata = () => {
-                        video.play();
-
-                        // Connect audio
-                        const source = audioCtx.createMediaElementSource(video);
-                        source.connect(dest);
-                        source.connect(audioCtx.destination); // Also play for monitoring
+                        video.play().catch(reject);
 
                         const drawFrame = () => {
                             if (video.paused || video.ended) {
-                                source.disconnect();
                                 resolve();
                                 return;
                             }
@@ -177,7 +178,6 @@ const CompileEvent: React.FC = () => {
 
             setProgress(100);
             recorder.stop();
-            await audioCtx.close();
 
             // Update state in Firestore if needed
             if (eventId && !eventId.startsWith('local_') && !eventId.startsWith('draft_')) {
