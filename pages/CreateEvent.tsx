@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { storage, db } from '../lib/firebase';
 // ... imports
 import {
@@ -62,51 +62,57 @@ const CreateEvent: React.FC = () => {
     React.useEffect(() => {
         const checkPaymentStatus = async () => {
             if (!currentUser) {
-                navigate('/pricing');
+                // Wait for auth to initialize or redirect
+                if (loadingEvents === false) navigate('/pricing');
                 return;
             }
 
-            // Using local profile from Context/LocalStorage instead of Firestore
-            const profiles = JSON.parse(localStorage.getItem('wishyoua_profiles') || '{}');
-            const localProfile = profiles[currentUser.email];
-
-            if (!localProfile) {
-                // If no profile found locally, check if we can trust the context one
-                if (!userProfile) {
-                    navigate('/pricing');
-                    return;
-                }
-            }
-
-            const activeProfile = localProfile || userProfile;
-            const userPlan = activeProfile?.plan || 'free';
-
+            // Real plan from Firestore profile via Context
+            const userPlan = currentUser.plan || userProfile?.plan || 'free';
             setCheckingPayment(false);
         };
 
         checkPaymentStatus();
-    }, [currentUser, userProfile, navigate]);
+    }, [currentUser, userProfile, navigate, loadingEvents]);
 
     React.useEffect(() => {
         const fetchEvents = async () => {
-            if (!currentUser?.email || checkingPayment) return;
+            if (!currentUser?.uid || checkingPayment) return;
+            setLoadingEvents(true);
             try {
-                // Read from LocalStorage
-                const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
+                // 1. Fetch from Firestore
+                const q = query(collection(db, "events"), where("ownerId", "==", currentUser.uid));
+                const querySnapshot = await getDocs(q);
+                const firestoreEvents: any[] = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    firestoreEvents.push({
+                        id: doc.id,
+                        ...data,
+                        createdAt: { toDate: () => new Date(data.createdAt) }
+                    });
+                });
 
-                // Filter by current user and sort by date
-                const filtered = localEvents
-                    .filter((e: any) => e.createdBy === currentUser.email)
-                    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                // 2. Read from LocalStorage (Fallback/Legacy)
+                const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
+                const filteredLocal = localEvents
+                    .filter((e: any) => e.createdBy === currentUser.email || e.ownerId === currentUser.uid)
                     .map((e: any) => ({
                         ...e,
-                        // Compatibility helper for .toDate() calls
                         createdAt: { toDate: () => new Date(e.createdAt) }
                     }));
 
-                setEvents(filtered);
+                // Deduplicate and combine
+                const combined = [...firestoreEvents];
+                filteredLocal.forEach((le: any) => {
+                    if (!combined.find(ce => ce.id === le.id)) {
+                        combined.push(le);
+                    }
+                });
+
+                setEvents(combined.sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()));
             } catch (error) {
-                console.error("Error fetching local events:", error);
+                console.error("Error fetching events:", error);
             } finally {
                 setLoadingEvents(false);
             }

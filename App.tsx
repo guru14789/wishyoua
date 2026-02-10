@@ -90,8 +90,8 @@ const App: React.FC = () => {
           <Route path="/share/:eventId" element={<ProtectedRoute element={<ShareEvent />} />} />
           <Route path="/dashboard/:eventId" element={<ProtectedRoute element={<Dashboard />} />} />
 
-          {/* Compile (requires Premium plan) */}
-          <Route path="/compile/:eventId" element={<PlanProtectedRoute element={<CompileEvent />} requiredPlan="premium" />} />
+          {/* Compile (Free for testing) */}
+          <Route path="/compile/:eventId" element={<PlanProtectedRoute element={<CompileEvent />} requiredPlan="free" />} />
 
           {/* Guest Flow Routes (Public - No Auth Required) */}
           <Route path="/invite/:eventId" element={<GuestIntro />} />

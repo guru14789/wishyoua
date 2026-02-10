@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-// Firebase imports removed for full frontend flow
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { ArrowLeft, Film, CheckCircle, Smartphone, Mail, Settings, Play, Download, Loader2 } from 'lucide-react';
-
-
-// ... imports ...
 
 const CompileEvent: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
@@ -16,44 +14,63 @@ const CompileEvent: React.FC = () => {
     const [submissions, setSubmissions] = useState<any[]>([]);
     const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
-    // Mock Notification Settings
     const [notifyEmail, setNotifyEmail] = useState(true);
     const [notifyPhone, setNotifyPhone] = useState(false);
-
     const [downloading, setDownloading] = useState(false);
 
-    // Fetch Event & Submissions (Mocked)
+    // Fetch Event & Submissions
     useEffect(() => {
         const fetchData = async () => {
             if (!eventId) return;
             try {
-                // Read from LocalStorage
-                const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
-                const foundEvent = localEvents.find((e: any) => e.id === eventId);
-
-                if (foundEvent) {
-                    setEventName(foundEvent.eventName);
-                    if (foundEvent.isCompiled) {
-                        setIsComplete(true);
+                // 1. Fetch Event Info
+                let eventData: any = null;
+                if (eventId.startsWith('local_')) {
+                    const localEvents = JSON.parse(localStorage.getItem('wishyoua_events') || '[]');
+                    eventData = localEvents.find((e: any) => e.id === eventId);
+                } else if (!eventId.startsWith('draft_')) {
+                    const docRef = doc(db, "events", eventId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        eventData = { id: docSnap.id, ...docSnap.data() };
                     }
-
-                    // Fetch Submissions from LocalStorage
-                    const allSubmissions = JSON.parse(localStorage.getItem('wishyoua_submissions') || '[]');
-                    const subs = allSubmissions
-                        .filter((s: any) => s.eventId === eventId && s.status === 'completed' && s.videoUrl)
-                        .map((s: any) => s.videoUrl);
-                    setSubmissions(subs);
-                } else if (eventId.startsWith('draft_')) {
+                } else {
                     setEventName("Local Draft Event");
                     setSubmissions([
                         "https://framerusercontent.com/assets/f7C7xL8Nl8X9u0k9X4.mp4",
                         "https://www.w3schools.com/html/mov_bbb.mp4"
                     ]);
-                } else {
-                    setEventName("Local Event");
+                    return;
+                }
+
+                if (eventData) {
+                    setEventName(eventData.eventName);
+                    if (eventData.isCompiled) {
+                        setIsComplete(true);
+                    }
+
+                    // 2. Fetch Submissions
+                    if (eventId.startsWith('local_')) {
+                        const allSubmissions = JSON.parse(localStorage.getItem('wishyoua_submissions') || '[]');
+                        const subsUrls = allSubmissions
+                            .filter((s: any) => s.eventId === eventId && s.status === 'completed' && s.videoUrl)
+                            .map((s: any) => s.videoUrl);
+                        setSubmissions(subsUrls);
+                    } else {
+                        const q = query(collection(db, "submissions"), where("eventId", "==", eventId));
+                        const querySnapshot = await getDocs(q);
+                        const subsUrls: string[] = [];
+                        querySnapshot.forEach((doc) => {
+                            const data = doc.data();
+                            if (data.status === 'completed' && data.videoUrl) {
+                                subsUrls.push(data.videoUrl);
+                            }
+                        });
+                        setSubmissions(subsUrls);
+                    }
                 }
             } catch (e) {
-                console.error("Local compile fetch error:", e);
+                console.error("Compile fetch error:", e);
             }
         };
         fetchData();

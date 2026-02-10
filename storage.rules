@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if request.auth != null;
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Intros: Created by event organizers
+    match /intros/{eventId}/{fileName} {
+      allow read: if true; // Guests need to see the intro
+      allow write: if request.auth != null; // Only logged in users can create events
+    }
+    
+    // Submissions: Uploaded by guests
+    match /submissions/{eventId}/{fileName} {
+      allow read: if request.auth != null; // Only the organizer (and eventually the compiler) reads
+      allow write: if true; // Allowed for guests to upload their videos
+    }
+
+    // Default rule
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
